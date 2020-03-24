@@ -13,5 +13,3 @@ msg: .asciz "Hello World form .data"
 la a0, msg
 li a7, 4 # appel systeme 4 selon la doc de Rars printString
 ecall
-
-# Bonus: avoir 64 dans un registre en une seule instruction
