@@ -1,5 +1,7 @@
 # Introduction à l'assembleur RiscV
 
+Liens vers le dépot git: <https://github.com/darnuria/esgi-riscv>
+
 Cours de 15h initialement donné pour les 4èmes années mobilité et objets connecté de l'ESGI en 2019 et 2020.
 
 Dans ce cours, nous allons découvrir les bases de l'assembleur RiscV, il s'agit d'un jeu
@@ -207,11 +209,16 @@ On verra dans la partie [Formatage binaire des instructions](#formatage-binaire-
 
 Comme vu l'avez peut-être vu en C on représente la mémoire comme un espace, allant
 de l'adresse `0x0000_0000` jusque à l'adresse `0xFFFF_FFFF` pour un programme 32 bits.
+La mémoire est organisée en lignes de 8 valeurs, contenant des mots de 32 bits, elle est
+addressable de 4 en 4, de 2 en 2 ou byte à byte.
+
+On utilisera courament l'adressage de 4 en 4 dit mot à mot, à part pour les chaines de caractère ou
+il est fait byte à byte. voir instruction `lw`, `lh`, `lb` et `sw`, `sh`, `sb`.
 
 Voici d'ailleurs une vue d'ensemble mémoire et code d'un programme assembleur:
 ![schema vue ensemble mémoire et code et segments](03_asm_memory.jpg).
 
-##### Segments
+#### Segments
 
 Dans nos programmes on décompose cet espace en segments par exemple pour le code
 est le segment: `.text` pour les données du programme connues avant l'exécution c'est le segment `.data`.
@@ -220,6 +227,20 @@ est le segment: `.text` pour les données du programme connues avant l'exécutio
 > au système d'instruction plus que au jeu d'instruction.
 
 Par exemple la pile est un segment particulier, qu'on utilise pour stocker des variables locales et conserver la valeur des registres entre les appels de fonctions ou appel au système d'exploitation.
+
+Précisions sur les segments de code pour cette architecture virtuelle:
+
+- Code `.text` `0x0040_0000` code de notre programme en langage machine
+- Stack/pile commence à `0x7fffeffc` allocation dans la pile
+- extern `0x1000_0000` variables globales utile avec `.include` (on utilisera pas)
+- data `0x1001_0000` variables locales à un fichier
+- heap/tas `0x1004_0000` allocations dynamiques
+- Memory Mapped IO `0xffff_0000` interaction IO directement par la mémoire sans support OS
+
+Note sur l'usage de l'inspecteur mémoire de Rars:
+
+Les cases dans l'inspecteur du segment data: 0 à +1C ça correspond au cases `0x1001_0000`; `0x1001_001C` de la mémoire du segment `.data` les adresses s'incrémentent de 4 en 4 donc `0x1001_0000`, `0x1001_0004`, `0x1001_0008`, `0x1001_000C`, `0x1001_00010`, `0x1001_0014`, `0x1001_0018`, `0x1001_001C` et `0x1001_0020` etc.
+
 
 ##### Adresses en l'assembleur
 
@@ -233,6 +254,11 @@ Ou alors on utilisera le registre, `sp` qui marque le sommet de la pile pour sau
 Le registre `gp` ou `ra` sont utilisés calculer des jumps relatifs dans le
 programme.
 Il existe aussi le programme counter qui contiens l'addresse de l'instruction courante.
+
+
+| Addresse | 0x1001_0000 | 0x1001_0004 | 0x1001_0008 |
+|:---------|:-----:|:-----:|:-------:|
+| Contenu  |  124  |  256  |  512  |
 
 <!-- ##### Mémoire virtuelle -->
 
@@ -251,6 +277,26 @@ ordinateur. C'est le but des instructions de stockage (store) et de chargement
 
 >_Note :_ En riscV la mémoire est toujours alignée sur un multiple de 4 et on ne
 > peut pas accéder sur autre chose que un multiple de 4.
+
+Exemple un tableau `[124, 256, 512]` contenant les mots de 32bits dans le segment de données `.data`,
+Voir instruction `lw` plus bas.
+
+| Addresse | 0x1001_0000 | 0x1001_0004 | 0x1001_0008 |
+|:---------|:-----------:|:-----------:|:-----------:|
+| Contenu  |         124 |         256 |        512  |
+
+En revanche maintenant si je travaille avec des données sur 8 bits comme des caractères j'addresserais de
+1 en 1!
+Voir instruction `lb` plus bas
+
+Voici la chaine "Chat" et son zéro de fin.
+
+| Addresse | 0x1001_0000 | 0x1001_0001 | 0x1001_0002 | 0x1001_0003 | 0x1001_0004 |
+|:---------|:-----------:|:-----------:|:-----------:|:-----------:|:-----------:|
+| Contenu  |           C |           h |           a |           t |          \0 |
+
+Si je travaille avec des mots sur 16 bits, la en revanche j'addresse de 2 en 2 mais c'est rare,
+Note: voir `lh`.
 
 ##### Charger une adresse dans un registre
 
@@ -411,6 +457,48 @@ Ici le format est très régulier entre toutes ces instructions vous aurrez touj
 > branch_instruction op1 op2 label
 
 Ça permet de réaliser les branchements utiles pour faire des programmes.
+
+#### Boucles
+
+Pour faire une boucle il est necessaire de définir un label pour le début et parfois un label
+pour la fin de la boucle.
+
+Trois étapes sont cruciales:
+
+- (parfois optionnelle) initialiser un itérateur ou compteur
+- Tester si la condition de validité de la boucle parfois il faudra inverser la condition que vous ecriveriez en pseudo code
+- Incrémenter
+
+Par exemple: un compteur qui compte jusque a 128:
+
+```mips
+li a0, 0 # i = 0
+li t0, 128 # end = 128
+
+while:
+  beq a0, t0, end_while
+  addi a0, a0, 1
+  j while
+end_while:
+```
+
+Une autre façon de faire aurait été d'inverser la condition d'arret:
+```
+li a0, 0 # i = 0
+li t0, 128 # end = 128
+
+while:
+  addi a0, a0, 1
+  bne a0, t0, while
+end_while:
+```
+
+**Note:** Dans vos programmes en général c'est le compilateur qui optimise ce genre de choses.
+Mais peut-être un jour ça vous servira de savoir identifier pourquoi un programme est lent et
+de comprendre l'assembleur emi.
+
+Il existe de très nombreuses façons d'optimiser dans les compilateurs les boucles, c'est important
+car nos programme passent la plupart de leur execution dans des boucles.
 
 #### Affectation conditionnelles
 
